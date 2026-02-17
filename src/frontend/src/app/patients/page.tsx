@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/shared/lib/auth";
 import { api } from "@/shared/lib/api";
@@ -14,6 +14,13 @@ interface Patient {
   phoneNumber: string;
   primaryBranch: { id: string; name: string } | null;
   createdAt: string;
+}
+
+interface PatientsResponse {
+  data: Patient[];
+  total: number;
+  nextCursor: string | null;
+  hasMore: boolean;
 }
 
 export default function PatientsPage() {
@@ -30,8 +37,14 @@ function PatientsContent() {
   const searchParams = useSearchParams();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
   const [selectedBranch, setSelectedBranch] = useState(searchParams.get("branchId") || "");
+  const [search, setSearch] = useState(searchParams.get("search") || "");
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -40,21 +53,57 @@ function PatientsContent() {
       .catch(() => {});
   }, [token]);
 
-  useEffect(() => {
+  const fetchPatients = useCallback(async (cursor?: string | null, append = false) => {
     if (!token) return;
-    setLoading(true);
-    const query = selectedBranch ? `?branchId=${selectedBranch}` : "";
-    api<{ data: Patient[]; total: number }>(`/api/patients${query}`, { token })
-      .then((res) => setPatients(res.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [token, selectedBranch]);
+    if (append) setLoadingMore(true); else setLoading(true);
+
+    const params = new URLSearchParams();
+    if (selectedBranch) params.set("branchId", selectedBranch);
+    if (search) params.set("search", search);
+    if (cursor) params.set("cursor", cursor);
+    params.set("limit", "20");
+
+    try {
+      const res = await api<PatientsResponse>(`/api/patients?${params}`, { token });
+      setPatients(prev => append ? [...prev, ...res.data] : res.data);
+      setNextCursor(res.nextCursor);
+      setHasMore(res.hasMore);
+      setTotal(res.total);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [token, selectedBranch, search]);
+
+  useEffect(() => {
+    fetchPatients();
+  }, [fetchPatients]);
 
   const handleBranchChange = (branchId: string) => {
     setSelectedBranch(branchId);
+    setPatients([]);
     const params = new URLSearchParams();
     if (branchId) params.set("branchId", branchId);
+    if (search) params.set("search", search);
     router.replace(`/patients${params.toString() ? `?${params}` : ""}`);
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setPatients([]);
+      const params = new URLSearchParams();
+      if (selectedBranch) params.set("branchId", selectedBranch);
+      if (value) params.set("search", value);
+      router.replace(`/patients${params.toString() ? `?${params}` : ""}`);
+    }, 300);
+  };
+
+  const handleLoadMore = () => {
+    if (nextCursor) fetchPatients(nextCursor, true);
   };
 
   const canCreate = user?.role === "Admin" || user?.role === "User";
@@ -74,8 +123,15 @@ function PatientsContent() {
           )}
         </div>
 
-        {/* Branch Filter */}
-        <div className="mb-4">
+        {/* Filters */}
+        <div className="flex gap-3 mb-4">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            placeholder="Search by name or phone..."
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none w-64"
+          />
           <select
             value={selectedBranch}
             onChange={(e) => handleBranchChange(e.target.value)}
@@ -102,6 +158,7 @@ function PatientsContent() {
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Branch</th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -111,6 +168,11 @@ function PatientsContent() {
                     <td className="px-6 py-4 text-sm text-gray-600">{p.phoneNumber}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{p.primaryBranch?.name || "-"}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{new Date(p.createdAt).toLocaleDateString("th-TH")}</td>
+                    <td className="px-6 py-4 text-sm">
+                      <Link href={`/patients/${p.id}/visits`} className="text-teal-600 hover:text-teal-800 text-xs font-medium">
+                        Visit History
+                      </Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -118,9 +180,20 @@ function PatientsContent() {
           )}
         </div>
 
-        <p className="mt-3 text-sm text-gray-500">
-          Showing {patients.length} patient{patients.length !== 1 ? "s" : ""}
-        </p>
+        <div className="mt-3 flex items-center justify-between">
+          <p className="text-sm text-gray-500">
+            Showing {patients.length} of {total} patient{total !== 1 ? "s" : ""}
+          </p>
+          {hasMore && (
+            <button
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              {loadingMore ? "Loading..." : "Load More"}
+            </button>
+          )}
+        </div>
       </div>
     </MainLayout>
   );

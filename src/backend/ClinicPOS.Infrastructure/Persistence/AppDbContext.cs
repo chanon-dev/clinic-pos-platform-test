@@ -20,6 +20,8 @@ public class AppDbContext : DbContext
     public DbSet<UserBranch> UserBranches => Set<UserBranch>();
     public DbSet<Patient> Patients => Set<Patient>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
+    public DbSet<PatientVisit> PatientVisits => Set<PatientVisit>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -34,5 +36,7 @@ public class AppDbContext : DbContext
             .HasQueryFilter(b => _tenantContext == null || b.TenantId == _tenantContext.TenantId);
         builder.Entity<Appointment>()
             .HasQueryFilter(a => _tenantContext == null || a.TenantId == _tenantContext.TenantId);
+        builder.Entity<PatientVisit>()
+            .HasQueryFilter(v => _tenantContext == null || v.TenantId == _tenantContext.TenantId);
     }
 }

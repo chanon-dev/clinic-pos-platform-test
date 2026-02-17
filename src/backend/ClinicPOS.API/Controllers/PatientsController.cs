@@ -52,12 +52,12 @@ public class PatientsController : ControllerBase
 
     [HttpGet]
     [RequirePermission(Permission.ViewPatient)]
-    public async Task<IActionResult> List([FromQuery] Guid? branchId)
+    public async Task<IActionResult> List([FromQuery] Guid? branchId, [FromQuery] string? cursor, [FromQuery] int limit = 20, [FromQuery] string? search = null)
     {
-        var patients = await _listHandler.HandleAsync(new ListPatientsQuery(branchId));
+        var result = await _listHandler.HandleAsync(new ListPatientsQuery(branchId, cursor, limit, search));
         return Ok(new
         {
-            data = patients.Select(p => new
+            data = result.Items.Select(p => new
             {
                 p.Id,
                 p.FirstName,
@@ -66,7 +66,9 @@ public class PatientsController : ControllerBase
                 primaryBranch = p.PrimaryBranch != null ? new { p.PrimaryBranch.Id, p.PrimaryBranch.Name } : null,
                 p.CreatedAt
             }),
-            total = patients.Count
+            total = result.TotalCount,
+            nextCursor = result.NextCursor,
+            hasMore = result.HasMore
         });
     }
 }

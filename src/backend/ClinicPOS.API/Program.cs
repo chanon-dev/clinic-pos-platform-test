@@ -1,10 +1,13 @@
 using System.Text;
 using ClinicPOS.API.Middleware;
+using ClinicPOS.API.Services;
 using ClinicPOS.Application.Appointments.Commands;
 using ClinicPOS.Application.Appointments.Queries;
 using ClinicPOS.Application.Common.Interfaces;
 using ClinicPOS.Application.Patients.Commands;
 using ClinicPOS.Application.Patients.Queries;
+using ClinicPOS.Application.PatientVisits.Commands;
+using ClinicPOS.Application.PatientVisits.Queries;
 using ClinicPOS.Application.Users.Commands;
 using ClinicPOS.Application.Users.Queries;
 using ClinicPOS.Infrastructure.Auth;
@@ -16,8 +19,13 @@ using ClinicPOS.Infrastructure.Persistence.Seeder;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using RabbitMQ.Client;
 using StackExchange.Redis;
+using Scalar.AspNetCore;
+using System.Text.Json;
+
+var HealthCheckJsonOptions = new JsonSerializerOptions { WriteIndented = true };
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,6 +59,7 @@ builder.Services.AddScoped<IPatientRepository, PatientRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IBranchRepository, BranchRepository>();
 builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
+builder.Services.AddScoped<IPatientVisitRepository, PatientVisitRepository>();
 
 // Application handlers
 builder.Services.AddScoped<CreatePatientHandler>();
@@ -61,6 +70,8 @@ builder.Services.AddScoped<CreateUserHandler>();
 builder.Services.AddScoped<AssignRoleHandler>();
 builder.Services.AddScoped<AssociateUserBranchesHandler>();
 builder.Services.AddScoped<AuthenticateUserHandler>();
+builder.Services.AddScoped<RecordVisitHandler>();
+builder.Services.AddScoped<GetVisitHistoryHandler>();
 
 // JWT
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "ClinicPOS-SuperSecret-Key-2026-Min32Chars!!";
@@ -93,6 +104,15 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Health Checks
+builder.Services.AddHealthChecks()
+    .AddNpgSql(connectionString, name: "postgresql")
+    .AddRedis(redisConnectionString, name: "redis")
+    .AddRabbitMQ(sp => sp.GetRequiredService<IConnection>(), name: "rabbitmq");
+
+// RabbitMQ Consumer
+builder.Services.AddHostedService<AppointmentNotificationConsumer>();
+
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
@@ -111,11 +131,42 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<TenantContextMiddleware>();
+app.UseMiddleware<RateLimitingMiddleware>();
+app.UseMiddleware<AuditLoggingMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapScalarApiReference(options =>
+    {
+        options
+            .WithTitle("Clinic POS API")
+            .WithTheme(ScalarTheme.BluePlanet)
+            .WithDefaultHttpClient(ScalarTarget.JavaScript, ScalarClient.Fetch);
+    });
 }
 
 app.MapControllers();
+
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var result = new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description,
+                duration = e.Value.Duration.TotalMilliseconds + "ms"
+            }),
+            totalDuration = report.TotalDuration.TotalMilliseconds + "ms"
+        };
+        await context.Response.WriteAsync(JsonSerializer.Serialize(result, HealthCheckJsonOptions));
+    }
+});
+
 app.Run();

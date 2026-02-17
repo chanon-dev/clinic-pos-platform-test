@@ -59,12 +59,41 @@
 3. **Fire-and-forget event publishing** — Appointment creation succeeds even if RabbitMQ publish fails. Event publishing is logged but doesn't block the response.
 4. **Cache key strategy** — `patients:{tenantId}:{branchId|all}` enables targeted invalidation by tenant prefix.
 
+### Phase 6: Phase 3 — Production Readiness
+
+**Prompt:** "implement Phase 3: Production Readiness (Future)"
+
+**What was implemented (8 features):**
+
+1. **Health Check Endpoints** — `/health` endpoint using AspNetCore.HealthChecks packages for PostgreSQL, Redis, RabbitMQ. Returns JSON with status of each dependency. No auth required.
+
+2. **Cursor-Based Pagination** — `PagedResult<T>` model with Base64-encoded cursor (CreatedAt+Id). `GET /api/patients?cursor=xxx&limit=20` returns `nextCursor`, `hasMore`, `totalCount`. Frontend "Load More" button pattern.
+
+3. **Patient Visit History** — New `PatientVisit` entity (Id, TenantId, PatientId, BranchId, VisitedAt, Notes). API: `POST/GET /api/patients/{id}/visits`. Frontend: visit history page with inline record form. Global query filter for tenant isolation.
+
+4. **Full-Text Search** — PostgreSQL `ILike` search across FirstName, LastName, PhoneNumber. `GET /api/patients?search=john`. Frontend: debounced search input (300ms) integrated with pagination.
+
+5. **Audit Logging Middleware** — `AuditLog` entity capturing mutation requests (POST/PUT/DELETE) to `/api/*`. Records TenantId, UserId, Action, EntityType, StatusCode, Timestamp. Admin-only `GET /api/audit-logs` endpoint. Non-blocking (never breaks requests).
+
+6. **RabbitMQ Consumer** — `BackgroundService` consuming `appointment.created` events from `clinic-pos.notifications` queue. Logs notification details with TenantId for traceability. Runs within the existing API process.
+
+7. **Per-Tenant Rate Limiting** — Custom middleware using `System.Threading.RateLimiting.FixedWindowRateLimiter`. 100 writes/min, 300 reads/min per tenant. Returns 429 with `Retry-After` header. Exempt paths: `/health`, `/api/auth/login`.
+
+8. **CI/CD Pipeline** — GitHub Actions workflow (`.github/workflows/ci.yml`). Jobs: backend build+test (.NET 10), frontend build (Node 22), docker-compose build verification. Triggers on push to main/phase-* branches and PRs.
+
+**Key decisions:**
+
+1. **Cursor-based over offset pagination** — Stable under concurrent inserts, no "skip N" performance degradation.
+2. **ILike over full-text search** — Simpler, sufficient for this scale. GIN indexes can be added later if needed.
+3. **Audit middleware after TenantContext** — Ensures we have tenant/user identity for logging.
+4. **Consumer as BackgroundService** — Simpler than a separate Docker service; adequate for v1.
+5. **In-memory rate limiter** — No Redis dependency for rate limiting; works per-instance. For horizontal scaling, would move to Redis-backed limiter.
+
 ## What I Would Improve With More Time
 
 1. Integration tests — Testing API endpoints with real database (TestContainers)
 2. More comprehensive error handling — FluentValidation for complex validation rules
 3. Frontend state management — TanStack Query for server state, optimistic updates
-4. Pagination — Cursor-based pagination for patient list
-5. Search — Full-text search on patient name/phone
-6. Appointment updates/cancellation — Currently only create and list
-7. RabbitMQ consumers — Add workers to process appointment events (notifications, analytics)
+4. Appointment updates/cancellation — Currently only create and list
+5. Redis-backed rate limiting — For horizontal scaling across multiple API instances
+6. OpenTelemetry tracing — Distributed tracing across API, Redis, RabbitMQ, PostgreSQL

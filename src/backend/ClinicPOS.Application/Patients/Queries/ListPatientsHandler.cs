@@ -1,4 +1,5 @@
 using ClinicPOS.Application.Common.Interfaces;
+using ClinicPOS.Application.Common.Models;
 using ClinicPOS.Domain.Entities;
 
 namespace ClinicPOS.Application.Patients.Queries;
@@ -16,15 +17,16 @@ public class ListPatientsHandler
         _tenantContext = tenantContext;
     }
 
-    public async Task<List<Patient>> HandleAsync(ListPatientsQuery query, CancellationToken ct = default)
+    public async Task<PagedResult<Patient>> HandleAsync(ListPatientsQuery query, CancellationToken ct = default)
     {
-        var cacheKey = $"patients:{_tenantContext.TenantId}:{query.BranchId?.ToString() ?? "all"}";
+        var limit = Math.Clamp(query.Limit, 1, 100);
+        var cacheKey = $"patients:{_tenantContext.TenantId}:{query.BranchId?.ToString() ?? "all"}:{query.Cursor ?? "first"}:{limit}:{query.Search ?? ""}";
 
-        var cached = await _cache.GetAsync<List<Patient>>(cacheKey, ct);
+        var cached = await _cache.GetAsync<PagedResult<Patient>>(cacheKey, ct);
         if (cached != null) return cached;
 
-        var patients = await _patients.GetAllAsync(query.BranchId, ct);
-        await _cache.SetAsync(cacheKey, patients, TimeSpan.FromMinutes(5), ct);
-        return patients;
+        var result = await _patients.GetPagedAsync(query.Cursor, limit, query.BranchId, query.Search, ct);
+        await _cache.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5), ct);
+        return result;
     }
 }
