@@ -8,11 +8,13 @@ public class CreatePatientHandler
 {
     private readonly IPatientRepository _patients;
     private readonly ITenantContext _tenantContext;
+    private readonly ICacheService _cache;
 
-    public CreatePatientHandler(IPatientRepository patients, ITenantContext tenantContext)
+    public CreatePatientHandler(IPatientRepository patients, ITenantContext tenantContext, ICacheService cache)
     {
         _patients = patients;
         _tenantContext = tenantContext;
+        _cache = cache;
     }
 
     public async Task<Result<Patient>> HandleAsync(CreatePatientCommand command, CancellationToken ct = default)
@@ -40,6 +42,7 @@ public class CreatePatientHandler
         };
 
         await _patients.AddAsync(patient, ct);
+        await _cache.RemoveByPrefixAsync($"patients:{_tenantContext.TenantId}:", ct);
         return Result<Patient>.Success(patient);
     }
 }

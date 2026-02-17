@@ -20,6 +20,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
 
   const navItems = [
     { label: "Patients", href: "/patients", icon: "👤" },
+    { label: "Appointments", href: "/appointments", icon: "📅" },
   ];
 
   return (

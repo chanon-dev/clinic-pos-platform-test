@@ -1,17 +1,23 @@
 using System.Text;
 using ClinicPOS.API.Middleware;
+using ClinicPOS.Application.Appointments.Commands;
+using ClinicPOS.Application.Appointments.Queries;
 using ClinicPOS.Application.Common.Interfaces;
 using ClinicPOS.Application.Patients.Commands;
 using ClinicPOS.Application.Patients.Queries;
 using ClinicPOS.Application.Users.Commands;
 using ClinicPOS.Application.Users.Queries;
 using ClinicPOS.Infrastructure.Auth;
+using ClinicPOS.Infrastructure.Caching;
+using ClinicPOS.Infrastructure.Messaging;
 using ClinicPOS.Infrastructure.Persistence;
 using ClinicPOS.Infrastructure.Persistence.Repositories;
 using ClinicPOS.Infrastructure.Persistence.Seeder;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using RabbitMQ.Client;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,6 +27,21 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
+// Redis
+var redisConnectionString = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379";
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+    ConnectionMultiplexer.Connect(redisConnectionString));
+builder.Services.AddSingleton<ICacheService, RedisCacheService>();
+
+// RabbitMQ
+var rabbitHost = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
+builder.Services.AddSingleton<IConnection>(sp =>
+{
+    var factory = new ConnectionFactory { HostName = rabbitHost };
+    return factory.CreateConnectionAsync().GetAwaiter().GetResult();
+});
+builder.Services.AddSingleton<IEventPublisher, RabbitMqEventPublisher>();
+
 // Tenant context (scoped)
 builder.Services.AddScoped<TenantContext>();
 builder.Services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
@@ -29,10 +50,13 @@ builder.Services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantCon
 builder.Services.AddScoped<IPatientRepository, PatientRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IBranchRepository, BranchRepository>();
+builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
 
 // Application handlers
 builder.Services.AddScoped<CreatePatientHandler>();
 builder.Services.AddScoped<ListPatientsHandler>();
+builder.Services.AddScoped<CreateAppointmentHandler>();
+builder.Services.AddScoped<ListAppointmentsHandler>();
 builder.Services.AddScoped<CreateUserHandler>();
 builder.Services.AddScoped<AssignRoleHandler>();
 builder.Services.AddScoped<AssociateUserBranchesHandler>();

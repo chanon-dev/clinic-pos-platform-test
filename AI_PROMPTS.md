@@ -40,11 +40,31 @@
 
 4. **UserRepository.IgnoreQueryFilters()** — Users need to be queried by username globally (login does not know tenant yet), so UserRepository uses IgnoreQueryFilters() for authentication.
 
+### Phase 5: Phase 2 — Appointments + Caching + Messaging
+
+**Prompt:** "implement Phase 2: Appointment + Caching + Messaging"
+
+**What was implemented:**
+- **Appointment entity** with TenantId, BranchId, PatientId, StartAt — full CRUD via REST API
+- **Redis caching** (StackExchange.Redis) — cache-aside pattern on patient list with 5min TTL, auto-invalidation on patient creation
+- **RabbitMQ messaging** (RabbitMQ.Client v7) — publishes `appointment.created` events to `clinic` topic exchange on appointment creation (fire-and-forget, non-blocking)
+- **Docker Compose** updated with Redis 7 + RabbitMQ 3 (management) services with health checks
+- **Frontend** — appointments list page with branch/date filters, create appointment form with patient/branch dropdowns
+- **Global Query Filter** extended to Appointment entity for tenant isolation
+- **Unique constraint** on (tenant_id, branch_id, patient_id, start_at) to prevent double-booking
+
+**Key decisions:**
+1. **RabbitMQ.Client v7 async API** — v7 uses `IChannel` instead of `IModel`, `CreateConnectionAsync`, `BasicPublishAsync`. All operations are async-first.
+2. **Redis graceful degradation** — All cache operations are wrapped in try/catch. If Redis is down, the app falls back to direct DB queries without errors.
+3. **Fire-and-forget event publishing** — Appointment creation succeeds even if RabbitMQ publish fails. Event publishing is logged but doesn't block the response.
+4. **Cache key strategy** — `patients:{tenantId}:{branchId|all}` enables targeted invalidation by tenant prefix.
+
 ## What I Would Improve With More Time
 
-1. Phase 2 features — Appointment management, Redis caching, RabbitMQ messaging
-2. Integration tests — Testing API endpoints with real database (TestContainers)
-3. More comprehensive error handling — FluentValidation for complex validation rules
-4. Frontend state management — TanStack Query for server state, optimistic updates
-5. Pagination — Cursor-based pagination for patient list
-6. Search — Full-text search on patient name/phone
+1. Integration tests — Testing API endpoints with real database (TestContainers)
+2. More comprehensive error handling — FluentValidation for complex validation rules
+3. Frontend state management — TanStack Query for server state, optimistic updates
+4. Pagination — Cursor-based pagination for patient list
+5. Search — Full-text search on patient name/phone
+6. Appointment updates/cancellation — Currently only create and list
+7. RabbitMQ consumers — Add workers to process appointment events (notifications, analytics)

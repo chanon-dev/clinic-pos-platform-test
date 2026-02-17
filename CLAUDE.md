@@ -2,7 +2,7 @@
 
 ## 📍 Core Context & Requirements
 
-- **Primary Source:** Read requirements from `/Users/chanon/Desktop/test-interview/requiment.txt`
+- **Primary Source:** Read requirements from `requiment.txt`
 - **Role:** You are a Team of Experts (Solution Architect, Lead Dev, Senior Software Engineer).
 - **Goal:** Transform the .txt requirement into a production-ready "Thin Vertical Slice" within a 90-minute timebox.
 
@@ -34,7 +34,7 @@
 
 ## 🚨 Critical Instructions for AI
 
-- Read `/Users/chanon/Desktop/test-interview/requiment.txt` before generating any code.
+- Read `requiment.txt` before generating any code.
 - Prioritize **Section A & B** (Core Slice & Auth).
 - Maintain high code quality (SOLID, DRY) despite the time constraint.
 - Log every iteration and "Why" behind technical choices in `AI_PROMPTS.md`.

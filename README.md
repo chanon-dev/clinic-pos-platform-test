@@ -1,4 +1,4 @@
-# Clinic POS Platform — v1
+# Clinic POS Platform — v2
 
 Multi-Tenant, Multi-Branch B2B Clinic Point-of-Service Platform.
 
@@ -9,6 +9,8 @@ Multi-Tenant, Multi-Branch B2B Clinic Point-of-Service Platform.
 | Backend    | .NET 10 / C# (Clean Architecture) |
 | Frontend   | Next.js 15 / TypeScript / Tailwind CSS |
 | Database   | PostgreSQL 16             |
+| Cache      | Redis 7                   |
+| Messaging  | RabbitMQ 3 (AMQP)        |
 | Auth       | JWT Bearer Token          |
 
 ## Quick Start
@@ -24,8 +26,10 @@ docker compose up --build
 
 This will start:
 - **Frontend:** http://localhost:3000
-- **API:** http://localhost:5000
+- **API:** http://localhost:5001
 - **PostgreSQL:** localhost:5432
+- **Redis:** localhost:6379
+- **RabbitMQ:** localhost:5672 (Management UI: http://localhost:15672 — guest/guest)
 
 The database is automatically migrated and seeded on startup.
 
@@ -59,7 +63,9 @@ src/frontend/src/
 └── shared/               # Shared components, hooks, API client
 ```
 
-## API Endpoints (Phase 1)
+## API Endpoints
+
+### Phase 1 — Auth & Patients
 
 | Method | Endpoint                   | Access            |
 | ------ | -------------------------- | ----------------- |
@@ -70,6 +76,17 @@ src/frontend/src/
 | POST   | /api/patients              | Admin, User       |
 | GET    | /api/patients              | All authenticated |
 | GET    | /api/branches              | All authenticated |
+
+### Phase 2 — Appointments + Caching + Messaging
+
+| Method | Endpoint                   | Access            |
+| ------ | -------------------------- | ----------------- |
+| POST   | /api/appointments          | Admin, User       |
+| GET    | /api/appointments?branchId=&date= | All authenticated |
+
+**Caching:** GET /api/patients responses are cached in Redis (5min TTL). Cache is automatically invalidated when a new patient is created.
+
+**Events:** When an appointment is created, an `appointment.created` event is published to RabbitMQ (`clinic` exchange, topic type).
 
 ## Key Design Decisions
 

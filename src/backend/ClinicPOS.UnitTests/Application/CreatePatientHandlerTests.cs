@@ -9,6 +9,7 @@ public class CreatePatientHandlerTests
 {
     private readonly IPatientRepository _patientRepo;
     private readonly ITenantContext _tenantContext;
+    private readonly ICacheService _cache;
     private readonly CreatePatientHandler _handler;
     private readonly Guid _tenantId = Guid.NewGuid();
 
@@ -16,8 +17,9 @@ public class CreatePatientHandlerTests
     {
         _patientRepo = Substitute.For<IPatientRepository>();
         _tenantContext = Substitute.For<ITenantContext>();
+        _cache = Substitute.For<ICacheService>();
         _tenantContext.TenantId.Returns(_tenantId);
-        _handler = new CreatePatientHandler(_patientRepo, _tenantContext);
+        _handler = new CreatePatientHandler(_patientRepo, _tenantContext, _cache);
     }
 
     [Fact]
