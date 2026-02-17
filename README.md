@@ -25,20 +25,22 @@ Multi-Tenant, Multi-Branch B2B Clinic Point-of-Service Platform.
 docker compose up --build
 ```
 
+**ไม่ต้องสร้างไฟล์ `.env` หรือ config ใดๆ** — ทุกค่าที่จำเป็น (database credentials, JWT key, API URL) มี default อยู่ใน `docker-compose.yml` แล้ว พร้อมใช้งานทันที
+
 This will start:
 
-- **Frontend:** <http://localhost:3000>
-- **API:** <http://localhost:5001>
-- **API Docs (Scalar):** <http://localhost:5001/scalar/v1>
-- **PostgreSQL:** localhost:5432
-- **Redis:** localhost:6379
-- **RabbitMQ:** localhost:5672 (Management UI: <http://localhost:15672> — guest/guest)
+| Service | URL |
+|---|---|
+| **Frontend** | <http://localhost:3000> |
+| **API** | <http://localhost:5001> |
+| **API Docs (Scalar)** | <http://localhost:5001/scalar/v1> |
+| **RabbitMQ Management** | <http://localhost:15672> (guest/guest) |
 
-The database is automatically migrated and seeded on startup.
+The database is **automatically migrated and seeded** on startup.
 
-### Environment Variables
+### Environment Variables (optional)
 
-Copy `.env.example` to `.env` and adjust as needed:
+หากต้องการ customize ค่าต่างๆ สามารถ copy `.env.example` ไปเป็น `.env`:
 
 ```bash
 cp .env.example .env
